@@ -1,5 +1,4 @@
-# .//docker/docker-compose.yaml
-#
+
 # This compose file has been updated to add the platform specification for Linux/ARM64,
 # and to remove the NVIDIA GPU deploy settings (which are not supported on macOS ARM systems).
 #

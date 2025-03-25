@@ -1,9 +1,12 @@
+#!/usr/bin/env python3
+
 # Copyright (c) 2022-2025, The Isaac Lab Project Developers.
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
-
-"""Utility functions for managing X11 forwarding in the docker container."""
+#
+# This module provides utility functions for managing X11 forwarding in the Docker container.
+# It has been modified to support macOS by adapting the mktemp command to the BSD syntax.
 
 from __future__ import annotations
 
@@ -21,21 +24,15 @@ from .state_file import StateFile
 def configure_x11(statefile: StateFile) -> dict[str, str]:
     """Configure X11 forwarding by creating and managing a temporary .xauth file.
 
-    If xauth is not installed, the function prints an error message and exits. The message
-    instructs the user to install xauth with 'apt install xauth'.
-
-    If the .xauth file does not exist, the function creates it and configures it with the necessary
-    xauth cookie.
+    If xauth is not installed, prints an error message and exits.
 
     Args:
-        statefile: An instance of the configuration file class.
+        statefile: An instance of the state file manager.
 
     Returns:
-        A dictionary with two key-value pairs:
-
-        - "__ISAACLAB_TMP_XAUTH": The path to the temporary .xauth file.
-        - "__ISAACLAB_TMP_DIR": The path to the directory where the temporary .xauth file is stored.
-
+        A dictionary with two keys:
+            "__ISAACLAB_TMP_XAUTH": path to the temporary .xauth file.
+            "__ISAACLAB_TMP_DIR": directory where the .xauth file is stored.
     """
     # check if xauth is installed
     if not shutil.which("xauth"):
@@ -62,22 +59,17 @@ def configure_x11(statefile: StateFile) -> dict[str, str]:
 
 
 def x11_check(statefile: StateFile) -> tuple[list[str], dict[str, str]] | None:
-    """Check and configure X11 forwarding based on user input and existing state.
+    """Check and configure X11 forwarding based on the state file.
 
-    This function checks if X11 forwarding is enabled in the configuration file. If it is not configured,
-    the function prompts the user to enable or disable X11 forwarding. If X11 forwarding is enabled, the function
-    configures X11 forwarding by creating a temporary .xauth file.
+    Prompts the user to enable forwarding if not already configured. Returns the docker-compose
+    x11 configuration and corresponding environment variables if enabled.
 
     Args:
-        statefile: An instance of the configuration file class.
+        statefile: An instance of the state file manager.
 
     Returns:
-        If X11 forwarding is enabled, the function returns a tuple containing the following:
-
-        - A list containing the x11.yaml file configuration option for docker-compose.
-        - A dictionary containing the environment variables for the container.
-
-        If X11 forwarding is disabled, the function returns None.
+        A tuple with a list (for docker-compose '--file x11.yaml') and a dictionary of environment variables,
+        or None if forwarding is disabled.
     """
     # set the namespace to X11 for the statefile
     statefile.namespace = "X11"
@@ -86,10 +78,7 @@ def x11_check(statefile: StateFile) -> tuple[list[str], dict[str, str]] | None:
 
     if is_x11_forwarding_enabled is None:
         print("[INFO] X11 forwarding from the Isaac Lab container is disabled by default.")
-        print(
-            "[INFO] It will fail if there is no display, or this script is being run via ssh without proper"
-            " configuration."
-        )
+        print("[INFO] It will fail if there is no display or if running via ssh without proper configuration.")
         x11_answer = input("Would you like to enable it? (y/N) ")
 
         # parse the user's input
@@ -108,9 +97,9 @@ def x11_check(statefile: StateFile) -> tuple[list[str], dict[str, str]] | None:
 
         # print help message to enable/disable X11 forwarding
         if is_x11_forwarding_enabled == "1":
-            print("\tTo disable X11 forwarding, set 'X11_FORWARDING_ENABLED=0' in '.container.cfg'.")
+            print("	To disable X11 forwarding, set 'X11_FORWARDING_ENABLED=0' in '.container.cfg'.")
         else:
-            print("\tTo enable X11 forwarding, set 'X11_FORWARDING_ENABLED=1' in '.container.cfg'.")
+            print("	To enable X11 forwarding, set 'X11_FORWARDING_ENABLED=1' in '.container.cfg'.")
 
     if is_x11_forwarding_enabled == "1":
         x11_envars = configure_x11(statefile)
@@ -122,14 +111,7 @@ def x11_check(statefile: StateFile) -> tuple[list[str], dict[str, str]] | None:
 
 
 def x11_cleanup(statefile: StateFile):
-    """Clean up the temporary .xauth file used for X11 forwarding.
-
-    If the .xauth file exists, this function deletes it and remove the corresponding state variable.
-
-    Args:
-        statefile: An instance of the configuration file class.
-    """
-    # set the namespace to X11 for the statefile
+    """Clean up the temporary .xauth file used for X11 forwarding."""
     statefile.namespace = "X11"
 
     # load the value of the temporary xauth file
@@ -143,27 +125,26 @@ def x11_cleanup(statefile: StateFile):
 
 
 def create_x11_tmpfile(tmpfile: Path | None = None, tmpdir: Path | None = None) -> Path:
-    """Creates an .xauth file with an MIT-MAGIC-COOKIE derived from the current ``DISPLAY`` environment variable.
+    """Creates an .xauth file with an MIT-MAGIC-COOKIE derived from the current DISPLAY.
 
     Args:
-        tmpfile: A Path to a file which will be filled with the correct .xauth info.
-        tmpdir: A Path to the directory where a random tmp file will be made.
-            This is used as an ``--tmpdir arg`` to ``mktemp`` bash command.
+        tmpfile: Optional. A Path to a file to use.
+        tmpdir: Optional. A Path to the directory for a temporary file.
 
     Returns:
-        The Path to the .xauth file.
+        The Path to the created .xauth file.
     """
     if tmpfile is None:
-        if tmpdir is None:
-            add_tmpdir = ""
+        if sys.platform == "darwin":
+            # Use BSD mktemp syntax on macOS.
+            result = subprocess.run(["mktemp", "-t", "xauth"], capture_output=True, text=True, check=True)
+            tmp_xauth = Path(result.stdout.strip())
         else:
-            add_tmpdir = f"--tmpdir={tmpdir}"
-        # Create .tmp file with .xauth suffix
-        tmp_xauth = Path(
-            subprocess.run(
-                ["mktemp", "--suffix=.xauth", f"{add_tmpdir}"], capture_output=True, text=True, check=True
-            ).stdout.strip()
-        )
+            args = ["mktemp", "--suffix=.xauth"]
+            if tmpdir is not None:
+                args.append(f"--tmpdir={tmpdir}")
+            result = subprocess.run(args, capture_output=True, text=True, check=True)
+            tmp_xauth = Path(result.stdout.strip())
     else:
         tmpfile.touch()
         tmp_xauth = tmpfile
@@ -173,8 +154,7 @@ def create_x11_tmpfile(tmpfile: Path | None = None, tmpdir: Path | None = None) 
         ["xauth", "nlist", os.environ["DISPLAY"]], capture_output=True, text=True, check=True
     ).stdout.replace("ffff", "")
 
-    # Merge the new cookie into the create .tmp file
-    subprocess.run(["xauth", "-f", tmp_xauth, "nmerge", "-"], input=xauth_cookie, text=True, check=True)
+    subprocess.run(["xauth", "-f", str(tmp_xauth), "nmerge", "-"], input=xauth_cookie, text=True, check=True)
 
     return tmp_xauth
 
@@ -182,19 +162,7 @@ def create_x11_tmpfile(tmpfile: Path | None = None, tmpdir: Path | None = None) 
 def x11_refresh(statefile: StateFile):
     """Refresh the temporary .xauth file used for X11 forwarding.
 
-    If x11 is enabled, this function generates a new .xauth file with the current MIT-MAGIC-COOKIE-1.
-    The new file uses the same filename so that the bind-mount and ``XAUTHORITY`` var from build-time
-    still work.
-
-    As the envar ``DISPLAY` informs the contents of the MIT-MAGIC-COOKIE-1, that value within the container
-    will also need to be updated to the current value on the host. Currently, this done automatically in
-    :meth:`ContainerInterface.enter` method.
-
-    The function exits if X11 forwarding is enabled but the temporary .xauth file does not exist. In this case,
-    the user must rebuild the container.
-
-    Args:
-        statefile: An instance of the configuration file class.
+    This creates a new .xauth file if needed, ensuring the cookie is up-to-date.
     """
     # set the namespace to X11 for the statefile
     statefile.namespace = "X11"
@@ -217,7 +185,7 @@ def x11_refresh(statefile: StateFile):
         # update the statefile with the new path
         statefile.set_variable("__ISAACLAB_TMP_XAUTH", str(tmp_xauth_value))
     elif tmp_xauth_value is None:
-        if is_x11_forwarding_enabled is not None and is_x11_forwarding_enabled == "1":
+        if is_x11_forwarding_enabled == "1":
             print(
                 "[ERROR] X11 forwarding is enabled but the temporary .xauth file does not exist."
                 " Please rebuild the container by running: './docker/container.py start'"
