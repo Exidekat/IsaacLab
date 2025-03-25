@@ -1,12 +1,10 @@
-
-# This compose file has been updated to add the platform specification for Linux/ARM64,
-# and to remove the NVIDIA GPU deploy settings (which are not supported on macOS ARM systems).
-#
-# For more information, see:
-# https://docs.docker.com/compose/compose-file/compose-file-v3/#platform
+# Here we set the parts that would
+# be re-used between services to an
+# extension field
+# https://docs.docker.com/compose/compose-file/compose-file-v3/#extension-fields
 
 x-default-isaac-lab-volumes: &default-isaac-lab-volumes
-  # These volumes follow from this page:
+  # These volumes follow from this page
   # https://docs.omniverse.nvidia.com/app_isaacsim/app_isaacsim/install_faq.html#save-isaac-sim-configs-on-local-disk
   - type: volume
     source: isaac-cache-kit
@@ -60,10 +58,12 @@ x-default-isaac-lab-environment: &default-isaac-lab-environment
   - ISAACSIM_PATH=${DOCKER_ISAACLAB_PATH}/_isaac_sim
   - OMNI_KIT_ALLOW_ROOT=1
 
+# Note: the "platform" is set via the DOCKER_DEFAULT_PLATFORM variable.
+# If DOCKER_DEFAULT_PLATFORM is not set in the environment, it defaults to linux/amd64.
 services:
-  # Base Isaac Lab container (CPU or virtual GPU)
+  # This service is the base Isaac Lab image.
   isaac-lab-base:
-    platform: linux/arm64
+    platform: ${DOCKER_DEFAULT_PLATFORM:-linux/amd64}
     profiles: [ "base" ]
     env_file: .env.base
     build:
@@ -80,14 +80,14 @@ services:
     environment: *default-isaac-lab-environment
     volumes: *default-isaac-lab-volumes
     network_mode: host
-    # Removed deploy section that requested NVIDIA GPU devices (not available on macOS ARM)
+    # This service does not deploy NVIDIA GPU resources on macOS or non‑GPU hosts.
     entrypoint: bash
     stdin_open: true
     tty: true
 
-  # ROS2-enabled container built on top of the base image
+  # This service adds a ROS2 Humble installation on top of the base image.
   isaac-lab-ros2:
-    platform: linux/arm64
+    platform: ${DOCKER_DEFAULT_PLATFORM:-linux/amd64}
     profiles: [ "ros2" ]
     env_file:
       - .env.base
@@ -103,13 +103,12 @@ services:
     environment: *default-isaac-lab-environment
     volumes: *default-isaac-lab-volumes
     network_mode: host
-    # Removed deploy section that requested NVIDIA GPU devices
     entrypoint: bash
     stdin_open: true
     tty: true
 
 volumes:
-  # Volumes for Isaac Sim and Isaac Lab persistent data
+  # Volumes for Isaac Sim and Isaac Lab persistent data.
   isaac-cache-kit:
   isaac-cache-ov:
   isaac-cache-pip:
@@ -119,7 +118,7 @@ volumes:
   isaac-carb-logs:
   isaac-data:
   isaac-docs:
-  # Volumes for Isaac Lab-specific data
+  # Volumes for Isaac Lab-specific data.
   isaac-lab-docs:
   isaac-lab-logs:
   isaac-lab-data:

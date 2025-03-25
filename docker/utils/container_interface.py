@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# .//docker/utils/container_interface.py
 #
 # Copyright (c) 2022-2025, The Isaac Lab Project Developers.
 # All rights reserved.
@@ -7,13 +6,14 @@
 # SPDX-License-Identifier: BSD-3-Clause
 #
 # This file defines a helper class for managing Isaac Lab Docker containers.
-# It has been modified to set the DOCKER_DEFAULT_PLATFORM environment variable
-# to "linux/arm64" (for Apple Silicon) and to remove the explicit "--platform" flags
-# from the docker compose commands since they are not recognized
+# It has been modified to dynamically set the DOCKER_DEFAULT_PLATFORM environment variable.
+# On macOS (Darwin) the variable is set to "linux/arm64" while on other platforms it is left unset
+# (so Docker will use its native defaults).
 
 from __future__ import annotations
 
 import os
+import platform
 import shutil
 import subprocess
 from pathlib import Path
@@ -63,9 +63,11 @@ class ContainerInterface:
         self.container_name = f"isaac-lab-{self.profile}"
         self.image_name = f"isaac-lab-{self.profile}:latest"
 
-        # Copy current environment and force ARM64 builds via DOCKER_DEFAULT_PLATFORM.
+        # Copy current environment and set DOCKER_DEFAULT_PLATFORM dynamically.
+        # On macOS (Darwin) we set it to linux/arm64; on other platforms we leave it unset.
         self.environ = os.environ.copy()
-        self.environ['DOCKER_DEFAULT_PLATFORM'] = 'linux/arm64'
+        if platform.system() == "Darwin":
+            self.environ['DOCKER_DEFAULT_PLATFORM'] = 'linux/arm64'
 
         # resolve the image extension through the passed yamls and envs
         self._resolve_image_extension(yamls, envs)
@@ -73,6 +75,7 @@ class ContainerInterface:
         self._parse_dot_vars()
 
     def is_container_running(self) -> bool:
+        """Check if the container is running."""
         status = subprocess.run(
             ["docker", "container", "inspect", "-f", "{{.State.Status}}", self.container_name],
             capture_output=True,
@@ -82,6 +85,7 @@ class ContainerInterface:
         return status == "running"
 
     def does_image_exist(self) -> bool:
+        """Check if the Docker image exists."""
         result = subprocess.run(["docker", "image", "inspect", self.image_name], capture_output=True, text=True)
         return result.returncode == 0
 
